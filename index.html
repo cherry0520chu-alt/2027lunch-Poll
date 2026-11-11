@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>2027 聚餐調查統計</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    input[type="radio"], input[type="checkbox"] {
+      accent-color: #000000;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 flex justify-center p-0 sm:p-4">
+
+  <!-- Mobile Form Container (Max 480px) -->
+  <main class="w-full max-w-[480px] bg-white min-h-screen sm:min-h-0 sm:rounded-3xl shadow-xl flex flex-col overflow-hidden pb-12">
+    
+    <!-- Top Header (改為質感深藍色底) -->
+    <header class="bg-blue-900 text-white px-5 pt-7 pb-6 relative shadow-md">
+      <div class="flex items-center justify-between mb-2">
+        <span class="inline-block px-2.5 py-1 bg-amber-500 text-slate-950 text-xs font-bold rounded-full">
+          家族投票調查
+        </span>
+        <span id="syncStatusBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-blue-955/80 text-blue-200 border border-blue-800 flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          連線檢查中
+        </span>
+      </div>
+      <h1 class="text-2xl font-extrabold tracking-tight">2027 聚餐時間地點意願統計</h1>
+      <p class="text-xs text-blue-200 mt-1">一人一票・支援隨時修改意願</p>
+
+      <!-- Deadline Notice & Realtime Countdown Card (深藍呼應色) -->
+      <div class="mt-4 bg-blue-950/80 border border-blue-800/80 rounded-2xl p-3.5 backdrop-blur-sm">
+        <div class="flex items-center justify-between text-xs text-blue-200">
+          <span class="flex items-center gap-1.5 font-medium">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            投票截止時間
+          </span>
+          <span class="text-amber-300 font-bold">2026/11/14 (六) 12:00</span>
+        </div>
+        
+        <div class="mt-2.5 flex items-center justify-between pt-2 border-t border-blue-900">
+          <span class="text-[11px] text-blue-300">距離截止倒數：</span>
+          <div id="countdownBox" class="flex items-center gap-1.5 text-xs font-mono font-bold text-amber-400">
+            <span id="cdText">計算中...</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="flex border-b border-gray-200 bg-white sticky top-0 z-20">
+      <button id="tabFormBtn" onclick="switchTab('form')" class="flex-1 py-3.5 text-sm font-bold text-center border-b-2 border-blue-900 text-blue-900 transition-colors">
+        填寫 / 修改投票
+      </button>
+      <button id="tabResultBtn" onclick="switchTab('result')" class="flex-1 py-3.5 text-sm font-bold text-center border-b-2 border-transparent text-gray-400 hover:text-blue-900 transition-colors flex items-center justify-center gap-1.5">
+        即時統計
+        <span id="badgeCount" class="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>
+      </button>
+    </nav>
+
+    <!-- CONTENT: Form Section -->
+    <section id="sectionForm" class="p-5 flex-1 flex flex-col">
+      
+      <!-- System/Lock Alert -->
+      <div id="closedAlert" class="hidden mb-4 bg-red-50 border border-red-200 rounded-xl p-3.5 text-red-700 text-xs flex items-center gap-2">
+        <svg class="w-5 h-5 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <div>
+          <span class="font-bold">投票已截止！</span> 目前僅供查閱統計結果，無法再修改或新增。
+        </div>
+      </div>
+
+      <!-- Edit Mode Banner -->
+      <div id="editModeNotice" class="hidden mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-900 text-xs flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          <span class="text-base">✏️</span>
+          <span>已載入您先前的投票紀錄，可直接修改並更新！</span>
+        </div>
+        <button type="button" onclick="resetFormToNew()" class="text-[11px] text-blue-700 underline font-bold whitespace-nowrap ml-2">清除重選</button>
+      </div>
+
+      <form id="voteForm" onsubmit="handleFormSubmit(event)" class="space-y-6">
+        
+        <!-- 1. 稱謂/名字 (下拉選單：乾淨人名，無任何備註或括弧) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 tracking-wider mb-1.5">
+            1. 稱謂 / 名字 <span class="text-red-500">*</span>
+          </label>
+          <div class="relative">
+            <select id="userName" required onchange="onNameSelected(this.value)" class="w-full bg-slate-50 border border-gray-300 text-slate-800 text-sm rounded-xl focus:ring-2 focus:ring-blue-900 focus:border-blue-900 block p-3 appearance-none font-medium">
+              <option value="" disabled selected>請選擇您的名字</option>
+              <option value="大姑">大姑</option>
+              <option value="二叔">二叔</option>
+              <option value="小姑">小姑</option>
+              <option value="三叔">三叔</option>
+              <option value="小叔">小叔</option>
+              <option value="CHERRY">CHERRY</option>
+              <option value="ARNO">ARNO</option>
+              <option value="熊">熊</option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 餐廳選項 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 tracking-wider mb-2">
+            2. 餐廳推薦與票選 <span class="text-red-500">*</span>
+          </label>
+          <div class="space-y-2.5">
+            <!-- 榮榮園 -->
+            <label class="flex items-start p-3.5 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 active:bg-blue-50 transition-all select-none">
+              <div class="flex items-center h-5 mt-0.5">
+                <input type="radio" id="rest_rr" name="restaurant" value="榮榮園" required onchange="toggleOtherRest(false)" class="w-5 h-5 text-black border-2 border-gray-400 focus:ring-0">
+              </div>
+              <div class="ml-3">
+                <span class="block text-sm font-bold text-slate-900">榮榮園浙寧餐廳</span>
+                <span class="text-[11px] text-gray-500">米其林必比登推薦・老字號江浙菜</span>
+              </div>
+            </label>
+
+            <!-- 其他建議餐廳 -->
+            <label class="flex items-start p-3.5 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 active:bg-blue-50 transition-all select-none">
+              <div class="flex items-center h-5 mt-0.5">
+                <input type="radio" id="rest_other" name="restaurant" value="其他" required onchange="toggleOtherRest(true)" class="w-5 h-5 text-black border-2 border-gray-400 focus:ring-0">
+              </div>
+              <div class="ml-3 flex-1">
+                <span class="block text-sm font-bold text-slate-900">其他建議餐廳</span>
+                <span class="text-[11px] text-gray-500">歡迎在下方輸入推薦的私房餐廳</span>
+              </div>
+            </label>
+
+            <!-- 建議餐廳輸入框 (展開) -->
+            <div id="otherRestContainer" class="hidden pt-1 pl-8">
+              <input type="text" id="otherRestInput" placeholder="請輸入推薦餐廳名稱或料理類型" class="w-full text-xs p-3 bg-slate-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-900 focus:border-blue-900">
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 日期調查 -->
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <label class="block text-xs font-bold text-slate-700 tracking-wider">
+              3. 出席日期調查 (可複選) <span class="text-red-500">*</span>
+            </label>
+            <span class="text-[11px] text-gray-400">可兩天皆選</span>
+          </div>
+
+          <div class="space-y-2.5">
+            <!-- 2027/1/30 -->
+            <label class="flex items-center p-3.5 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-all select-none">
+              <input type="checkbox" id="date_1" name="voteDate" value="2027/1/30" onchange="onDateChanged()" class="w-5 h-5 rounded text-black border-2 border-gray-400 focus:ring-0">
+              <div class="ml-3">
+                <span class="block text-sm font-bold text-slate-900">2027 / 1 / 30 (週六中午)</span>
+                <span class="text-[11px] text-gray-500">農曆年前</span>
+              </div>
+            </label>
+
+            <!-- 2027/2/13 -->
+            <label class="flex items-center p-3.5 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-all select-none">
+              <input type="checkbox" id="date_2" name="voteDate" value="2027/2/13" onchange="onDateChanged()" class="w-5 h-5 rounded text-black border-2 border-gray-400 focus:ring-0">
+              <div class="ml-3">
+                <span class="block text-sm font-bold text-slate-900">2027 / 2 / 13 (週六中午)</span>
+                <span class="text-[11px] text-gray-500">春節前夕</span>
+              </div>
+            </label>
+
+            <!-- 快速選項：兩天皆可 / 皆不克出席 -->
+            <div class="grid grid-cols-2 gap-2 pt-1">
+              <button type="button" onclick="quickSelectDates('both')" class="py-2 text-xs border border-blue-200 rounded-lg bg-blue-50/50 hover:bg-blue-100 font-medium text-blue-900 active:scale-95 transition-all">
+                ✓ 兩天都方便
+              </button>
+              <button type="button" onclick="quickSelectDates('none')" class="py-2 text-xs border border-gray-200 rounded-lg bg-slate-50 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-gray-500 active:scale-95 transition-all">
+                ✕ 皆無法出席
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. 出席人數 -->
+        <div id="guestCountSection" class="p-3.5 bg-slate-50 rounded-2xl border border-gray-200 space-y-3">
+          <label class="block text-xs font-bold text-slate-700">出席人數估計</label>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-600 font-medium">大人 (12歲以上)</span>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="stepCount('adults', -1)" class="w-7 h-7 rounded-full bg-white border border-gray-300 flex items-center justify-center font-bold text-slate-700 shadow-sm active:scale-90">-</button>
+              <span id="adultCount" class="w-6 text-center text-sm font-bold">1</span>
+              <button type="button" onclick="stepCount('adults', 1)" class="w-7 h-7 rounded-full bg-white border border-gray-300 flex items-center justify-center font-bold text-slate-700 shadow-sm active:scale-90">+</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between border-t border-gray-200 pt-2.5">
+            <span class="text-xs text-slate-600 font-medium">小朋友 / 兒童</span>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="stepCount('kids', -1)" class="w-7 h-7 rounded-full bg-white border border-gray-300 flex items-center justify-center font-bold text-slate-700 shadow-sm active:scale-90">-</button>
+              <span id="kidCount" class="w-6 text-center text-sm font-bold">0</span>
+              <button type="button" onclick="stepCount('kids', 1)" class="w-7 h-7 rounded-full bg-white border border-gray-300 flex items-center justify-center font-bold text-slate-700 shadow-sm active:scale-90">+</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. 備註 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 tracking-wider mb-1">備註需求 (選填)</label>
+          <input type="text" id="noteInput" placeholder="例如：素食、嬰兒座椅需求、不吃牛等" class="w-full text-xs p-3 bg-slate-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-900 focus:border-blue-900">
+        </div>
+
+        <!-- 送出按鈕 (藍色主題) -->
+        <button type="submit" id="submitBtn" class="w-full py-4 bg-blue-900 hover:bg-blue-800 active:bg-blue-950 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-900/20 transition-transform active:scale-[0.99] flex items-center justify-center gap-2">
+          <span id="submitBtnText">送出投票意願</span>
+        </button>
+
+      </form>
+    </section>
+
+    <!-- CONTENT: Results Section -->
+    <section id="sectionResult" class="hidden p-5 flex-1 flex flex-col space-y-6">
+      
+      <!-- 投票完成度進度條 -->
+      <div class="bg-slate-50 border border-gray-200 rounded-2xl p-4">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="text-xs font-bold text-slate-700">投票進度</span>
+          <span id="progressRatio" class="text-xs font-mono font-bold text-blue-950">0 / 8 人</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+          <div id="progressBar" class="bg-blue-900 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+        <div class="mt-2 text-[11px] text-gray-500 flex flex-wrap gap-1 items-center">
+          <span>未投票：</span>
+          <span id="pendingList" class="font-medium text-amber-700">全部</span>
+        </div>
+      </div>
+
+      <!-- 統計數據卡片 -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-blue-900 text-white rounded-2xl p-3.5 flex flex-col justify-between shadow-md">
+          <span class="text-[11px] text-blue-200">目前預估出席</span>
+          <div class="mt-1 flex items-baseline gap-1">
+            <span id="statTotalHeads" class="text-2xl font-extrabold tracking-tight">0</span>
+            <span class="text-xs font-medium text-blue-200">人</span>
+          </div>
+          <span id="statSubHeads" class="text-[10px] text-blue-300 mt-1">大 0・童 0</span>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-2xl p-3.5 flex flex-col justify-between shadow-sm">
+          <span class="text-[11px] text-gray-500">已回覆票數</span>
+          <div class="mt-1 flex items-baseline gap-1">
+            <span id="statVotedCount" class="text-2xl font-extrabold text-blue-950">0</span>
+            <span class="text-xs font-medium text-gray-500">票</span>
+          </div>
+          <span id="statModeBadge" class="text-[10px] text-emerald-600 font-medium">即時統計中</span>
+        </div>
+      </div>
+
+      <!-- 日期偏好統計長條圖 -->
+      <div class="space-y-3">
+        <h2 class="text-xs font-bold text-slate-700 tracking-wider">日期得票分布</h2>
+        
+        <div class="space-y-2 text-xs">
+          <div>
+            <div class="flex justify-between mb-1">
+              <span class="font-bold text-slate-800">2027/1/30 (六中午)</span>
+              <span id="countD1" class="font-mono text-gray-600">0 票 (0%)</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-3">
+              <div id="barD1" class="bg-blue-900 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between mb-1">
+              <span class="font-bold text-slate-800">2027/2/13 (六中午)</span>
+              <span id="countD2" class="font-mono text-gray-600">0 票 (0%)</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-3">
+              <div id="barD2" class="bg-blue-900 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 餐廳票選結果 -->
+      <div class="space-y-3">
+        <h2 class="text-xs font-bold text-slate-700 tracking-wider">餐廳意願偏好</h2>
+        <div class="space-y-2 text-xs">
+          <div>
+            <div class="flex justify-between mb-1">
+              <span class="font-bold text-slate-800">榮榮園浙寧餐廳</span>
+              <span id="countRong" class="font-mono text-gray-600">0 票</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-3">
+              <div id="barRong" class="bg-amber-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between mb-1">
+              <span class="font-bold text-slate-800">其他推薦餐廳</span>
+              <span id="countOther" class="font-mono text-gray-600">0 票</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-3">
+              <div id="barOther" class="bg-slate-400 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 其他餐廳推薦清單 -->
+        <div id="otherRestSuggestions" class="mt-2 bg-slate-50 border border-gray-200 rounded-xl p-3 text-xs hidden">
+          <span class="font-bold text-gray-600 block mb-1">親友推薦的其他清單：</span>
+          <ul id="otherRestList" class="list-disc pl-4 text-slate-700 space-y-0.5"></ul>
+        </div>
+      </div>
+
+      <!-- 投票明細清單與清空管理區 -->
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-xs font-bold text-slate-700 tracking-wider">投票明細一覽</h2>
+          <div class="flex items-center gap-3">
+            <button onclick="exportCSV()" class="text-[11px] text-blue-900 underline font-medium">匯出 CSV</button>
+            <button onclick="clearAllVotes()" class="text-[11px] text-red-600 hover:text-red-800 font-bold bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded border border-red-200 transition-colors">
+              🗑️ 清空所有投票
+            </button>
+          </div>
+        </div>
+        
+        <div id="recordsContainer" class="space-y-2 text-xs">
+          <div class="text-center py-6 text-gray-400">目前尚無人填寫投票</div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    // --- 1. Supabase 初始化連線 ---
+    const SUPABASE_URL = "https://zvalhhmpkwiulqlfdphk.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_te933oX3VNWSPLS_BlzmZw_DEZT2yRp";
+    let supabaseClient = null;
+    let isCloudOnline = false;
+
+    try {
+      supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    } catch (e) {
+      console.warn("Supabase 初始化警告:", e);
+    }
+
+    // 名單順序 (共 8 位)
+    const FULL_MEMBER_LIST = ["大姑", "二叔", "小姑", "三叔", "小叔", "CHERRY", "ARNO", "熊"];
+    
+    // 截止日期：2026/11/14 12:00:00 (本地時間)
+    const DEADLINE = new Date("2026-11-14T12:00:00");
+
+    let isExpired = false;
+    let votesData = [];
+    let adults = 1;
+    let kids = 0;
+    let isEditMode = false;
+
+    // --- 初始化成員下拉選單 (乾淨人名，不加任何備註與提示) ---
+    function initDropdown() {
+      const select = document.getElementById("userName");
+      const currentVal = select.value;
+
+      select.innerHTML = '<option value="" disabled selected>請選擇您的名字</option>';
+      
+      FULL_MEMBER_LIST.forEach(member => {
+        const opt = document.createElement("option");
+        opt.value = member;
+        opt.textContent = member; // 單純顯示乾淨名字
+        select.appendChild(opt);
+      });
+
+      if (currentVal) {
+        select.value = currentVal;
+      }
+    }
+
+    // --- 2. 截止時間倒數與檢核 ---
+    function updateCountdown() {
+      const now = new Date();
+      const diff = DEADLINE - now;
+      const cdText = document.getElementById("cdText");
+      const submitBtn = document.getElementById("submitBtn");
+      const closedAlert = document.getElementById("closedAlert");
+
+      if (diff <= 0) {
+        isExpired = true;
+        cdText.textContent = "已截止";
+        cdText.classList.remove("text-amber-400");
+        cdText.classList.add("text-red-400");
+        closedAlert.classList.remove("hidden");
+        
+        submitBtn.disabled = true;
+        submitBtn.classList.remove("bg-blue-900", "hover:bg-blue-800");
+        submitBtn.classList.add("bg-gray-400", "cursor-not-allowed");
+        document.getElementById("submitBtnText").textContent = "投票已結束";
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / 1000 / 60) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+
+      if (days > 0) {
+        cdText.textContent = `${days} 天 ${hours} 小時 ${minutes} 分`;
+      } else {
+        cdText.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+    }
+
+    // --- 3. 頁面分頁切換 ---
+    function switchTab(tab) {
+      const formSec = document.getElementById("sectionForm");
+      const resSec = document.getElementById("sectionResult");
+      const tabFormBtn = document.getElementById("tabFormBtn");
+      const tabResultBtn = document.getElementById("tabResultBtn");
+
+      if (tab === "form") {
+        formSec.classList.remove("hidden");
+        resSec.classList.add("hidden");
+        tabFormBtn.className = "flex-1 py-3.5 text-sm font-bold text-center border-b-2 border-blue-900 text-blue-900 transition-colors";
+        tabResultBtn.className = "flex-1 py-3.5 text-sm font-bold text-center border-b-2 border-transparent text-gray-400 hover:text-blue-900 transition-colors flex items-center justify-center gap-1.5";
+      } else {
+        formSec.classList.add("hidden");
+        resSec.classList.remove("hidden");
+        tabResultBtn.className = "flex-1 py-3.5 text-sm font-bold text-center border-b-2 border-blue-900 text-blue-900 flex items-center justify-center gap-1.5 transition-colors";
+        tabFormBtn.className = "flex-1 py-3.5 text-sm font-bold text-center border-b-2 border-transparent text-gray-400 hover:text-blue-900 transition-colors";
+        renderResults();
+      }
+    }
+
+    // --- 4. 餐廳與日期控制 ---
+    function toggleOtherRest(show) {
+      const el = document.getElementById("otherRestContainer");
+      const input = document.getElementById("otherRestInput");
+      if (show) {
+        el.classList.remove("hidden");
+        input.focus();
+      } else {
+        el.classList.add("hidden");
+        input.value = "";
+      }
+    }
+
+    function quickSelectDates(mode) {
+      const checkboxes = document.querySelectorAll('input[name="voteDate"]');
+      if (mode === 'both') {
+        checkboxes.forEach(c => c.checked = true);
+        document.getElementById("guestCountSection").classList.remove("opacity-50", "pointer-events-none");
+        if (adults === 0) adults = 1;
+        document.getElementById("adultCount").textContent = adults;
+      } else if (mode === 'none') {
+        checkboxes.forEach(c => c.checked = false);
+        adults = 0; kids = 0;
+        document.getElementById("adultCount").textContent = 0;
+        document.getElementById("kidCount").textContent = 0;
+      }
+    }
+
+    function onDateChanged() {
+      const anyChecked = document.querySelectorAll('input[name="voteDate"]:checked').length > 0;
+      if (anyChecked && adults === 0) {
+        adults = 1;
+        document.getElementById("adultCount").textContent = 1;
+      }
+    }
+
+    function stepCount(type, val) {
+      if (type === 'adults') {
+        adults = Math.max(0, adults + val);
+        document.getElementById("adultCount").textContent = adults;
+      } else {
+        kids = Math.max(0, kids + val);
+        document.getElementById("kidCount").textContent = kids;
+      }
+    }
+
+    // 下拉選中：若該成員已投過票，自動帶入歷史紀錄供修改
+    function onNameSelected(val) {
+      const existing = votesData.find(v => v.name === val);
+      const notice = document.getElementById("editModeNotice");
+      const submitBtnText = document.getElementById("submitBtnText");
+
+      if (existing) {
+        isEditMode = true;
+        notice.classList.remove("hidden");
+        submitBtnText.textContent = `更新 ${val} 的投票紀錄`;
+
+        // 帶入餐廳
+        if (existing.restaurant === "榮榮園") {
+          document.getElementById("rest_rr").checked = true;
+          toggleOtherRest(false);
+        } else if (existing.restaurant === "其他") {
+          document.getElementById("rest_other").checked = true;
+          toggleOtherRest(true);
+          document.getElementById("otherRestInput").value = existing.other_restaurant || "";
+        }
+
+        // 帶入日期
+        const dates = existing.dates || [];
+        document.getElementById("date_1").checked = dates.includes("2027/1/30");
+        document.getElementById("date_2").checked = dates.includes("2027/2/13");
+
+        // 帶入人數
+        adults = existing.adults !== undefined ? existing.adults : 1;
+        kids = existing.kids !== undefined ? existing.kids : 0;
+        document.getElementById("adultCount").textContent = adults;
+        document.getElementById("kidCount").textContent = kids;
+
+        // 帶入備註
+        document.getElementById("noteInput").value = existing.note || "";
+      } else {
+        resetFormInputsOnly();
+      }
+    }
+
+    function resetFormToNew() {
+      document.getElementById("userName").value = "";
+      resetFormInputsOnly();
+    }
+
+    function resetFormInputsOnly() {
+      isEditMode = false;
+      document.getElementById("editModeNotice").classList.add("hidden");
+      document.getElementById("submitBtnText").textContent = "送出投票意願";
+      
+      const restChecked = document.querySelector('input[name="restaurant"]:checked');
+      if (restChecked) restChecked.checked = false;
+      toggleOtherRest(false);
+
+      document.querySelectorAll('input[name="voteDate"]').forEach(c => c.checked = false);
+      adults = 1; kids = 0;
+      document.getElementById("adultCount").textContent = 1;
+      document.getElementById("kidCount").textContent = 0;
+      document.getElementById("noteInput").value = "";
+    }
+
+    function editVoteByName(name) {
+      switchTab('form');
+      const select = document.getElementById("userName");
+      select.value = name;
+      onNameSelected(name);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // --- 5. 雲端資料同步 ---
+    function getLocalVotes() {
+      try {
+        const raw = localStorage.getItem("poll_votes_backup");
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveLocalVotes(data) {
+      try {
+        localStorage.setItem("poll_votes_backup", JSON.stringify(data));
+      } catch (e) {
+        console.error("本地儲存失敗:", e);
+      }
+    }
+
+    async function fetchVotes() {
+      const statusBadge = document.getElementById("syncStatusBadge");
+      let cloudLoaded = false;
+
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient
+            .from('poll_votes')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (!error && data) {
+            votesData = data;
+            saveLocalVotes(data);
+            cloudLoaded = true;
+            isCloudOnline = true;
+            statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span> 雲端連線正常';
+            statusBadge.className = "text-[11px] px-2 py-0.5 rounded-full bg-blue-950/80 text-emerald-300 border border-blue-800 flex items-center gap-1";
+            document.getElementById("statModeBadge").textContent = "雲端即時同步中";
+          }
+        } catch (err) {
+          console.warn("Supabase 連線失敗:", err);
+        }
+      }
+
+      if (!cloudLoaded) {
+        votesData = getLocalVotes();
+        isCloudOnline = false;
+        statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-300"></span> 本地儲存模式';
+        statusBadge.className = "text-[11px] px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-200 border border-blue-800 flex items-center gap-1";
+        document.getElementById("statModeBadge").textContent = "本機即時統計";
+      }
+
+      document.getElementById("badgeCount").textContent = votesData.length;
+      initDropdown();
+      renderResults();
+    }
+
+    function subscribeRealtime() {
+      if (!supabaseClient) return;
+      try {
+        supabaseClient
+          .channel('public:poll_votes')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'poll_votes' }, () => {
+            fetchVotes();
+          })
+          .subscribe();
+      } catch (e) {
+        console.warn("Realtime 跳過:", e);
+      }
+    }
+
+    // --- 6. 提交表單 ---
+    async function handleFormSubmit(e) {
+      e.preventDefault();
+      
+      if (new Date() >= DEADLINE) {
+        alert("抱歉，投票已經於 2026/11/14 12:00 截止！");
+        return;
+      }
+
+      const name = document.getElementById("userName").value;
+      if (!name) {
+        alert("請選擇您的名字！");
+        return;
+      }
+
+      const restChoice = document.querySelector('input[name="restaurant"]:checked')?.value;
+      const otherRest = document.getElementById("otherRestInput").value.trim();
+      const dateCheckboxes = document.querySelectorAll('input[name="voteDate"]:checked');
+      const dates = Array.from(dateCheckboxes).map(c => c.value);
+      const note = document.getElementById("noteInput").value.trim();
+
+      if (restChoice === '其他' && !otherRest) {
+        alert("請輸入您推薦的餐廳名稱！");
+        return;
+      }
+
+      const submitBtn = document.getElementById("submitBtn");
+      const submitBtnText = document.getElementById("submitBtnText");
+      submitBtn.disabled = true;
+      submitBtnText.textContent = isEditMode ? "更新紀錄中..." : "資料送出中...";
+
+      const payload = {
+        name,
+        restaurant: restChoice,
+        other_restaurant: otherRest,
+        dates,
+        adults,
+        kids,
+        note,
+        created_at: new Date().toISOString()
+      };
+
+      if (supabaseClient) {
+        try {
+          await supabaseClient
+            .from('poll_votes')
+            .upsert([payload], { onConflict: 'name' });
+        } catch (err) {
+          console.warn("Supabase 連線失敗:", err);
+        }
+      }
+
+      const localList = getLocalVotes().filter(v => v.name !== name);
+      localList.unshift(payload);
+      saveLocalVotes(localList);
+      votesData = localList;
+
+      alert(isEditMode ? `✅ ${name} 的投票紀錄已成功更新！` : `✅ 感謝 ${name}，您的投票意願已成功送出！`);
+      
+      resetFormToNew();
+      await fetchVotes();
+      switchTab('result');
+
+      submitBtn.disabled = false;
+      submitBtnText.textContent = "送出投票意願";
+    }
+
+    // --- 7. 清空投票資料 ---
+    async function deleteVoteByName(name) {
+      if (!confirm(`確定要刪除「${name}」的這筆投票紀錄嗎？刪除後該成員可重新投票。`)) {
+        return;
+      }
+
+      if (supabaseClient) {
+        try {
+          await supabaseClient
+            .from('poll_votes')
+            .delete()
+            .eq('name', name);
+        } catch (e) {
+          console.warn("雲端單筆刪除失敗:", e);
+        }
+      }
+
+      const updated = getLocalVotes().filter(v => v.name !== name);
+      saveLocalVotes(updated);
+      votesData = updated;
+
+      alert(`已成功清除 ${name} 的投票紀錄！`);
+      await fetchVotes();
+    }
+
+    async function clearAllVotes() {
+      const confirmText = prompt("⚠️ 警告：這將會【清空所有人】的投票紀錄，統計數據將歸零！\n\n若確定要清空，請在下方輸入「清空」並按確定：");
+      if (confirmText !== "清空") {
+        if (confirmText !== null) alert("輸入不正確，已取消清空操作。");
+        return;
+      }
+
+      if (supabaseClient) {
+        try {
+          await supabaseClient
+            .from('poll_votes')
+            .delete()
+            .neq('name', '___dummy_never_match___');
+        } catch (e) {
+          console.warn("雲端資料清空失敗:", e);
+        }
+      }
+
+      localStorage.removeItem("poll_votes_backup");
+      votesData = [];
+
+      alert("✅ 已成功清空所有投票紀錄！系統已重置為初始狀態。");
+      resetFormToNew();
+      await fetchVotes();
+      switchTab('form');
+    }
+
+    // --- 8. 渲染統計與明細 ---
+    function renderResults() {
+      const uniqueMap = new Map();
+      votesData.forEach(v => {
+        if (!uniqueMap.has(v.name)) uniqueMap.set(v.name, v);
+      });
+      const uniqueVotes = Array.from(uniqueMap.values());
+      const totalVotes = uniqueVotes.length;
+      
+      // 1. 進度條與未投名單
+      const votedSet = new Set(uniqueVotes.map(v => v.name));
+      const pending = FULL_MEMBER_LIST.filter(m => !votedSet.has(m));
+      document.getElementById("progressRatio").textContent = `${totalVotes} / ${FULL_MEMBER_LIST.length} 人`;
+      document.getElementById("progressBar").style.width = `${(totalVotes / FULL_MEMBER_LIST.length) * 100}%`;
+      document.getElementById("pendingList").textContent = pending.length ? pending.join("、") : "已全部完成投票！🎉";
+
+      // 2. 人數加總
+      let totalAdults = 0;
+      let totalKids = 0;
+      let d1Count = 0;
+      let d2Count = 0;
+      let rongCount = 0;
+      let otherCount = 0;
+      let otherList = [];
+
+      uniqueVotes.forEach(v => {
+        totalAdults += (v.adults || 0);
+        totalKids += (v.kids || 0);
+        if (v.dates && v.dates.includes("2027/1/30")) d1Count++;
+        if (v.dates && v.dates.includes("2027/2/13")) d2Count++;
+        if (v.restaurant === "榮榮園") rongCount++;
+        if (v.restaurant === "其他") {
+          otherCount++;
+          if (v.other_restaurant) otherList.push(`${v.name} 推薦：${v.other_restaurant}`);
+        }
+      });
+
+      document.getElementById("statTotalHeads").textContent = totalAdults + totalKids;
+      document.getElementById("statSubHeads").textContent = `大人 ${totalAdults}・兒童 ${totalKids}`;
+      document.getElementById("statVotedCount").textContent = totalVotes;
+
+      // 日期圖表 (藍色主題)
+      const p1 = totalVotes ? Math.round((d1Count / totalVotes) * 100) : 0;
+      const p2 = totalVotes ? Math.round((d2Count / totalVotes) * 100) : 0;
+      document.getElementById("countD1").textContent = `${d1Count} 票 (${p1}%)`;
+      document.getElementById("barD1").style.width = `${p1}%`;
+      document.getElementById("countD2").textContent = `${d2Count} 票 (${p2}%)`;
+      document.getElementById("barD2").style.width = `${p2}%`;
+
+      // 餐廳圖表
+      const pr = totalVotes ? Math.round((rongCount / totalVotes) * 100) : 0;
+      const po = totalVotes ? Math.round((otherCount / totalVotes) * 100) : 0;
+      document.getElementById("countRong").textContent = `${rongCount} 票 (${pr}%)`;
+      document.getElementById("barRong").style.width = `${pr}%`;
+      document.getElementById("countOther").textContent = `${otherCount} 票 (${po}%)`;
+      document.getElementById("barOther").style.width = `${po}%`;
+
+      // 推薦餐廳清單
+      const sugBox = document.getElementById("otherRestSuggestions");
+      const sugUl = document.getElementById("otherRestList");
+      if (otherList.length) {
+        sugBox.classList.remove("hidden");
+        sugUl.innerHTML = otherList.map(item => `<li>${item}</li>`).join("");
+      } else {
+        sugBox.classList.add("hidden");
+      }
+
+      // 明細卡片列表
+      const container = document.getElementById("recordsContainer");
+      if (!uniqueVotes.length) {
+        container.innerHTML = `<div class="text-center py-6 text-gray-400">目前尚無人填寫投票</div>`;
+        return;
+      }
+
+      container.innerHTML = uniqueVotes.map(v => {
+        const dateBadges = (v.dates && v.dates.length) 
+          ? v.dates.map(d => `<span class="bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded text-[10px] text-blue-900 font-medium">${d}</span>`).join(" ")
+          : `<span class="text-red-500 font-bold">皆無法出席</span>`;
+
+        const restLabel = v.restaurant === "其他" ? `其他 (${v.other_restaurant || '未指定'})` : v.restaurant;
+
+        return `
+          <div class="p-3 bg-white border border-gray-200 rounded-xl flex flex-col gap-1.5 shadow-sm">
+            <div class="flex justify-between items-center">
+              <span class="font-extrabold text-sm text-slate-900">${v.name}</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-[11px] text-gray-400 font-mono mr-1">${v.adults || 0}大 ${v.kids || 0}小</span>
+                <button onclick="editVoteByName('${v.name}')" class="text-[11px] text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded font-bold transition-colors">
+                  修改
+                </button>
+                <button onclick="deleteVoteByName('${v.name}')" class="text-[11px] text-red-500 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold transition-colors">
+                  刪除
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-gray-400">餐廳:</span>
+              <span class="font-medium text-slate-800">${restLabel}</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-gray-400">日期:</span>
+              ${dateBadges}
+            </div>
+            ${v.note ? `<div class="text-gray-500 text-[11px] bg-slate-50 p-1.5 rounded mt-0.5">備註: ${v.note}</div>` : ''}
+          </div>
+        `;
+      }).join("");
+    }
+
+    // --- 9. 匯出 CSV 檔 ---
+    function exportCSV() {
+      const uniqueMap = new Map();
+      votesData.forEach(v => {
+        if (!uniqueMap.has(v.name)) uniqueMap.set(v.name, v);
+      });
+      const exportList = Array.from(uniqueMap.values());
+
+      if (!exportList.length) {
+        alert("尚無投票資料可匯出！");
+        return;
+      }
+      let csv = "\uFEFF姓名,餐廳選項,其他餐廳,出席日期,大人數,小孩數,備註需求,最後更新時間\n";
+      exportList.forEach(v => {
+        const dStr = (v.dates || []).join(" & ");
+        csv += `"${v.name}","${v.restaurant}","${v.other_restaurant || ''}","${dStr}",${v.adults},${v.kids},"${v.note || ''}","${v.created_at || ''}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `2027聚餐統計_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // --- 初始化執行 ---
+    initDropdown();
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+    fetchVotes();
+    subscribeRealtime();
+  </script>
+</body>
+</html>
